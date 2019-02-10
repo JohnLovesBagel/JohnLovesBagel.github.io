@@ -1,0 +1,279 @@
+<html>
+<title>Seal game</title>
+<body>
+<canvas id="myCanvas" width=300 height=300 style="background:url('Reefed.jpg'); 
+background-size: cover">
+  </canvas>
+  
+<script> 
+ var ctx = myCanvas.getContext("2d"); // Get the drawing context for the canvas
+ var FPS = 40;                        // How many frames per second
+ var mouse_x = 0;
+ var mouse_y = 0;                     // Where is the mouse
+ var fish=[];                         // an array of fish
+ var score = 0;                       // the score
+ var health = 100;                    // Seal health starts at 100
+ var touched_Shark= false;           // have we already touched the current shark
+ var touched_Trash= false;           // have we already touched the current Trash
+
+ function MySprite (img_url) {
+    this.x = 0;
+    this.y = 0; 
+    this.visible= true;
+    this.velocity_x = 0;
+    this.velocity_y = 0;
+    this.MyImg = new Image();
+    this.MyImg.src = img_url ;
+    this.angle = 0;                                  // How many degrees we are rotated
+    this.flipV = false;                              // Are we flipped vertically 
+    this.flipH = false;                              // Are we flipped horizontally
+    }
+
+
+ MySprite.prototype.Do_Frame_Things = function() {
+    ctx.save();
+    ctx.translate(this.x + this.MyImg.width/2, this.y + this.MyImg.height/2);
+    ctx.rotate(this.angle * Math.PI / 180);                       // rotating
+    if (this.flipV) ctx.scale(1,-1);                              // flipping
+    if (this.flipH) ctx.scale(-1,1);
+                    
+    if (this.visible) ctx.drawImage(this.MyImg, -this.MyImg.width/2, -this.MyImg.height/2);
+    this.x = this.x + this.velocity_x;
+    this.y = this.y + this.velocity_y;                            // move the thing
+    ctx.restore();                                                // unwarp the context
+    }
+
+
+ MySprite.prototype.Point_Towards = function(target_x, target_y) {
+   //
+   // Makes the sprite rotate so it's pointing at the (x,y) specified
+   //
+   var distance_x = target_x - (this.x + this.MyImg.width/2);              // the distance components
+   var distance_y = target_y - (this.y + this.MyImg.height/2);
+   this.angle = (Math.atan2(distance_y, distance_x) * 180 / Math.PI) + 90; // trigonometry magic !
+   }
+
+
+ MySprite.prototype.Move_Towards = function(target_x, target_y, speed) {
+   //
+   // Sets the velocities so the sprite moves toward the (x,y) specified at the speed specified
+   //
+   var distance_x = target_x - (this.x + this.MyImg.width/2);                          // The distance components
+   var distance_y = target_y - (this.y + this.MyImg.height/2);
+   var actual_distance = Math.sqrt(distance_x * distance_x  + distance_y * distance_y);  
+   this.velocity_x = distance_x / actual_distance * speed ;   
+   this.velocity_y = distance_y / actual_distance * speed ;                              // Set the velocities
+   if (Math.abs(distance_x) < Math.abs(this.velocity_x)) this.velocity_x = 0;
+   if (Math.abs(distance_y) < Math.abs(this.velocity_y)) this.velocity_y = 0;            // Stop jitter upon arrival
+   }
+
+
+ function ImagesTouching(thing1, thing2) {
+          //
+          // This function detects whether two MySprites are touching - very useful function
+          // 
+          if (!thing1.visible  || !thing2.visible) return false;         
+          if (thing1.x >= thing2.x + thing2.MyImg.width || thing1.x + thing1.MyImg.width <= thing2.x) return false;   
+          if (thing1.y >= thing2.y + thing2.MyImg.height || thing1.y + thing1.MyImg.height <= thing2.y) return false; 
+          return true;                                                                                                
+          }
+
+
+ function MyTouchMoveHandler(MyEvent) {
+   var rect = myCanvas.getBoundingClientRect();
+   mouse_x = MyEvent.touches[0].clientX - rect.left;                                     // Keep track of mouse coordinate
+   mouse_y = MyEvent.touches[0].clientY - rect.top;
+   MyEvent.preventDefault()
+   }
+
+
+ function MyMouseMoveHandler (MyEvent) { 
+   var rect = myCanvas.getBoundingClientRect();
+   mouse_x= MyEvent.clientX - rect.left;                                                // Keep track of finger coordinate
+   mouse_y= MyEvent.clientY - rect.top;
+   }
+
+ addEventListener("touchmove", MyTouchMoveHandler);     
+ addEventListener("touchstart", MyTouchMoveHandler);     
+ addEventListener("mousemove", MyMouseMoveHandler);     
+
+
+function set_random_side (thing) {
+   //
+   // Given a sprite thing, place it on one side of the canvas, headed to the other side
+   //
+   if (Math.random() > 0.5) {                               // choose side 50:50
+       // start on LHS
+       thing.x = -thing.MyImg.width;                        // off-screen to the left
+       thing.velocity_x = Math.random()*8 + 2;              // moving right
+       thing.flipH = true;                                  // face other direction
+       }
+   else {
+       // start on RHS
+       thing.x = myCanvas.width;                            // off-screen to the right
+       thing.velocity_x = -1 * (Math.random()*8 + 2);       // moving left 
+       thing.flipH = false;                                 // keep facing same way
+       }
+   thing.y =  Math.random() * myCanvas.height * 0.8;        // set a y-position
+   }
+
+
+ function add_a_random_fish() {
+   var which_fish= Math.floor(Math.random()*4)+1;                                     // random number, 1 to 4
+   var new_fish = new MySprite("https://s2js.com/img/etc/fish" + which_fish + ".png"); // new sprite with random fish image
+   set_random_side(new_fish);                                                         // position the fish 
+   fish.push(new_fish);                                                               // add it to the array
+   }
+
+
+ function Do_a_Frame () {
+    ctx.clearRect(0, 0, myCanvas.width, myCanvas.height);          // clear the frame
+    ctx.fillStyle= "yellow";
+    ctx.font="15px Arial";
+    ctx.fillText("Score: " + score, 0, 20);                        // display score
+
+    ctx.fillStyle= "green";                                        // assume all is fine, health colour will be green
+    if (health < 30) ctx.fillStyle= "red";                         // if health is low, health colour will be red  
+    ctx.fillRect(myCanvas.width-110, 5, health, 10);               // fill a rectangle whose width is my health
+    ctx.strokeRect(myCanvas.width-110, 5, 100, 10);                // stroke a border, full width
+
+    Seal.Point_Towards(mouse_x, mouse_y);                         // tell Seal to point to mouse
+    Seal.Move_Towards(mouse_x, mouse_y, 7);                       // and move that way
+    Seal.Do_Frame_Things();                                       // let the Seal do its thing
+
+
+
+    if (health < 1) {                                              // Game over
+        ctx.font = "bold 30px Arial";                                   
+        ctx.textAlign="center";
+        ctx.fillText("Game over, score: " + score, myCanvas.width / 2, myCanvas.height / 2);
+        ctx.textAlign="left";
+        }
+    else {
+        Shark.Do_Frame_Things();                                      // let the shark do its thing
+
+        for (var i=0; i < fish.length; i++) {                          // for every fish 
+            fish[i].Do_Frame_Things();                                 // let the fish be fishy
+
+            if (ImagesTouching(fish[i], Seal)) {                      // if it's touching the Seal
+                   fish.splice(i, 1);                                  // remove the fish
+                   score = score + 1;                                  // score goes up too
+                   health= health + 10;                                // eating a fish regains health
+                   if (health > 100) health= 100;                      // but never past 100
+                   }
+            else if (fish[i].x + fish[i].MyImg.width < 0 || fish[i].x > myCanvas.width) {  // way off-screen
+                   fish.splice(i, 1);                                  // remove the fish 
+                   } 
+            else if (ImagesTouching(fish[i], Shark)) {
+                   fish.splice(i, 1);                                  // The shark ate a fish
+                   } 
+            }  // for all the fish
+
+        if (ImagesTouching(Seal, Shark) && !touched_Shark) {        // shark is touching Seal
+                touched_Shark = true;                                 // Only one health deduction per encounter
+                health = health - 90;                                  // Health goes down 90
+                if (health < 0) health = 0;                            // But never past zero
+                }
+        if (Shark.x + Shark.MyImg.width < 0 || Shark.x > myCanvas.width) {        // shark is off-screen
+                if (Shark.visible) setTimeout(Appear_Shark, Math.random()*3000);   // Schedule the next shark
+                Shark.visible= false;                                               
+                }
+        } // game not over yet
+    }
+
+/* function Do_a_Frame () {
+    ctx.clearRect(0, 0, myCanvas.width, myCanvas.height);          // clear the frame
+    ctx.fillStyle= "yellow";
+    ctx.font="15px Arial";
+    ctx.fillText("Score: " + score, 0, 20);                        // display score
+
+    ctx.fillStyle= "green";                                        // assume all is fine, health colour will be green
+    if (health < 30) ctx.fillStyle= "red";                         // if health is low, health colour will be red  
+    ctx.fillRect(myCanvas.width-110, 5, health, 10);               // fill a rectangle whose width is my health
+    ctx.strokeRect(myCanvas.width-110, 5, 100, 10);                // stroke a border, full width
+
+    Seal.Point_Towards(mouse_x, mouse_y);                         // tell Seal to point to mouse
+    Seal.Move_Towards(mouse_x, mouse_y, 7);                       // and move that way
+    Seal.Do_Frame_Things();                                       // let the Seal do its thing
+
+
+
+    if (health < 1) {                                              // Game over
+        ctx.font = "bold 30px Arial";                                   
+        ctx.textAlign="center";
+        ctx.fillText("Game over, score: " + score, myCanvas.width / 2, myCanvas.height / 2);
+        ctx.textAlign="left";
+        }
+    else {
+        Trash.Do_Frame_Things();                                      // let the shark do its thing
+
+        for (var i=0; i < fish.length; i++) {                          // for every fish 
+            fish[i].Do_Frame_Things();                                 // let the fish be fishy
+
+            if (ImagesTouching(fish[i], Trash)) {                      // if it's touching the Seal
+                   fish.splice(i, 1);                                  // remove the fish
+                   score = score + 1;                                  // score goes up too
+                   health= health + 10;                                // eating a fish regains health
+                   if (health > 100) health= 100;                      // but never past 100
+                   }
+            else if (fish[i].x + fish[i].MyImg.width < 0 || fish[i].x > myCanvas.width) {  // way off-screen
+                   fish.splice(i, 1);                                  // remove the fish 
+                   } 
+            else if (ImagesTouching(fish[i], Shark)) {
+                   fish.splice(i, 1);                                  // The shark ate a fish
+                   } 
+            }  // for all the fish
+
+        if (ImagesTouching(Seal, Trash) && !touched_Shark) {        // shark is touching Seal
+                touched_Trash = true;                                 // Only one health deduction per encounter
+                health = health - 90;                                  // Health goes down 90
+                if (health < 0) health = 0;                            // But never past zero
+                }
+        if (Trash.x + Trash.MyImg.width < 0 || Trash.x > myCanvas.width) {        // shark is off-screen
+                if (Trash.visible) setTimeout(Appear_Trash, Math.random()*3000);   // Schedule the next shark
+                Trash.visible= false;                                               
+                }
+        } // game not over yet
+    }
+    */
+
+function Appear_Shark () {
+   set_random_side(Shark);                     // start the shark on a random side, just like a fish
+   Shark.velocity_y = Math.random()*20-10;       // slight vertical velocity so it goes a bit diagonal
+   Shark.visible= true;                        // and make it visible
+   touched_Shark= false;                       // Seal hasn't touched it yet 
+   }
+
+function Diminish_Health() {
+   if (health > 0) health= health - 1;         // health drops, but never past zero
+   }
+function Appear_Trash () {
+   set_random_side(Trash);                     // start the Trash on a random side, just like a fish
+   Trash.velocity_y = Math.random()*20-10;      // slight vertical velocity so it goes a bit diagonal
+   Trash.visible= true;                        // and make it visible
+   touched_Trash= false;                       // Seal hasn't touched it yet 
+   } 
+   
+ var Shark= new MySprite("shark_40.png"); 
+ Shark.visible= false; 
+
+ var Trash= new MySprite("Garbage_15"); 
+ Shark.visible= false; 
+
+ var Seal= new MySprite("Seal_2023.png"); 
+ Seal.x=120;
+ Seal.y=120;
+
+ setInterval(Do_a_Frame, 1000/FPS);                             // set my frame renderer
+ setInterval(add_a_random_fish, 2000);                          // add a fish every two seconds
+ setTimeout(Appear_Shark, 3000);                               // first shark after 3 sec
+ setTimeout(Appear_Trash, 3000);  
+ setInterval(Diminish_Health, 250);                             // lose health slowly but surely
+
+ myCanvas.width = window.innerWidth - 20;                       // fill the entire browser width
+ myCanvas.height = window.innerHeight - 20;                     // fill the entire browser height
+
+
+ </script>  
+</body>
+</html>
